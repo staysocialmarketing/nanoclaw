@@ -2,7 +2,7 @@
 // Each import triggers the channel module's registerChannel() call.
 
 // bluebubbles
-import './bluebubbles.js';
+// import './bluebubbles.js';
 
 // discord
 
