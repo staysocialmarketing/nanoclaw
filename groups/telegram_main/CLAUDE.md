@@ -129,6 +129,41 @@ Standard Markdown: `**bold**`, `*italic*`, `[links](url)`, `# headings`.
 
 ---
 
+## Stay Social HUB Access
+
+Lev can interact with the Stay Social HUB via the agent-bridge API.
+
+Base URL: https://ktyjtbivycjkklkrcudb.supabase.co/functions/v1/agent-bridge
+Auth header: x-api-key: 902d57feb97352c22c024cad8c0f8099feb18ba87e6032917702dd63a505b929
+
+Available endpoints:
+
+POST /create-post
+{ "client_id": "uuid", "title": "...", "platform": "Instagram/Facebook/LinkedIn/Google", "caption": "...", "hashtags": "...", "status": "ai_draft" }
+
+POST /update-post-status
+{ "post_id": "uuid", "status": "internal_review" }
+
+POST /tag-user
+{ "post_id": "uuid", "user_id": "uuid", "role": "assignee" }
+
+POST /read-posts
+{ "client_id": "uuid", "status": "ai_draft", "limit": 20 }
+
+## Known Clients
+
+Craig Spicer (mortgage broker, Halifax) — client_id: 8c86b2a1-a2ef-4965-b4f5-cce64b001c13
+Platforms: Instagram, Facebook, LinkedIn, Google
+
+## Workflow
+
+When Corey approves drafted content in Telegram:
+1. Use /create-post to add each post to the HUB with status "ai_draft"
+2. Notify Corey the posts are live in the HUB for his review
+3. Corey reviews in HUB and moves through approval workflow
+
+---
+
 ## Task Scripts
 
 For any recurring task, use `schedule_task`. Frequent agent invocations consume API credits — use a script to check the condition first whenever possible, so the agent only wakes when action is actually needed.
