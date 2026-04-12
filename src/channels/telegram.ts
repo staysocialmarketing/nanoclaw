@@ -4,7 +4,7 @@ import path from 'path';
 
 import { Api, Bot } from 'grammy';
 
-import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
+import { ASSISTANT_NAME, getTriggerPattern, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { resolveGroupFolderPath } from '../group-folder.js';
 import { logger } from '../logger.js';
@@ -90,7 +90,10 @@ export class TelegramChannel implements Channel {
       const fileUrl = `https://api.telegram.org/file/bot${this.botToken}/${file.file_path}`;
       const resp = await fetch(fileUrl);
       if (!resp.ok) {
-        logger.warn({ fileId, status: resp.status }, 'Telegram file download failed');
+        logger.warn(
+          { fileId, status: resp.status },
+          'Telegram file download failed',
+        );
         return null;
       }
 
@@ -170,9 +173,13 @@ export class TelegramChannel implements Channel {
           ? senderName
           : (ctx.chat as any).title || chatJid;
 
-      // Translate Telegram @bot_username mentions into TRIGGER_PATTERN format.
-      // Telegram @mentions (e.g., @andy_ai_bot) won't match TRIGGER_PATTERN
-      // (e.g., ^@Andy\b), so we prepend the trigger when the bot is @mentioned.
+      // Look up group early so we can use its trigger for bot-mention translation
+      const group = this.opts.registeredGroups()[chatJid];
+
+      // Translate Telegram @bot_username mentions into the group's trigger format.
+      // When the bot is @mentioned (e.g. @DerekStaySocialBot), Telegram delivers it
+      // as a mention entity. We prepend the group's configured trigger word so the
+      // message loop recognises it. Falls back to @ASSISTANT_NAME for unregistered chats.
       const botUsername = ctx.me?.username?.toLowerCase();
       if (botUsername) {
         const entities = ctx.message.entities || [];
@@ -185,8 +192,14 @@ export class TelegramChannel implements Channel {
           }
           return false;
         });
-        if (isBotMentioned && !TRIGGER_PATTERN.test(content)) {
-          content = `@${ASSISTANT_NAME} ${content}`;
+        if (isBotMentioned) {
+          const triggerWord = group?.trigger || `@${ASSISTANT_NAME}`;
+          const triggerPattern = group?.trigger
+            ? getTriggerPattern(group.trigger)
+            : TRIGGER_PATTERN;
+          if (!triggerPattern.test(content)) {
+            content = `${triggerWord} ${content}`;
+          }
         }
       }
 
@@ -202,7 +215,6 @@ export class TelegramChannel implements Channel {
       );
 
       // Only deliver full message for registered groups
-      const group = this.opts.registeredGroups()[chatJid];
       if (!group) {
         logger.debug(
           { chatJid, chatName },
