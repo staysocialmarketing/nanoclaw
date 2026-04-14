@@ -91,12 +91,29 @@ When working as a sub-agent or directing another agent, only use `send_message` 
 
 Files you create are saved in `/workspace/group/`. Use this for drafts, research, client notes, and anything that should persist across sessions.
 
+## Shared Memory
+
+At the start of every session, read these files to get full context:
+
+- `/workspace/shared/memory.md` — active projects, priorities, open items
+- `/workspace/shared/clients.md` — client profiles and notes
+- `/workspace/shared/decisions.md` — log of key decisions
+
+After any conversation where you learn something important, update the relevant shared file:
+
+- New or updated client info → `/workspace/shared/clients.md`
+- Key decision made → `/workspace/shared/decisions.md` (newest first, with date)
+- Shift in priorities, project status, or important context → `/workspace/shared/memory.md`
+
+This shared memory is also visible to Lev in the team group context, so both contexts stay aligned.
+
 ## Memory
 
 The `conversations/` folder contains searchable history of past conversations. Use this to recall prior context, decisions, and client details.
 
 When you learn something important:
-- Create files for structured data (e.g., `clients.md`, `campaigns.md`, `decisions.md`)
+- Update shared memory files (see above) for anything that spans contexts
+- Create files in `/workspace/group/` for drafts, campaign work, and context specific to this chat
 - Split files larger than 500 lines into folders
 - Keep an index in your memory for the files you create
 

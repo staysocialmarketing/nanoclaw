@@ -124,6 +124,17 @@ function buildVolumeMounts(
     }
   }
 
+  // Shared memory directory (read-write for all groups)
+  // Used for cross-context shared state (e.g. clients, decisions, memory)
+  const sharedDir = path.join(GROUPS_DIR, 'shared');
+  if (fs.existsSync(sharedDir)) {
+    mounts.push({
+      hostPath: sharedDir,
+      containerPath: '/workspace/shared',
+      readonly: false,
+    });
+  }
+
   // Per-group Claude sessions directory (isolated from other groups)
   // Each group gets their own .claude/ to prevent cross-group session access
   const groupSessionsDir = path.join(
