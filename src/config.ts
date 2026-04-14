@@ -10,6 +10,7 @@ const envConfig = readEnvFile([
   'ASSISTANT_HAS_OWN_NUMBER',
   'ONECLI_URL',
   'TZ',
+  'AGENT_BRIDGE_API_KEY',
 ]);
 
 export const ASSISTANT_NAME =
@@ -95,3 +96,8 @@ function resolveConfigTimezone(): string {
   return 'UTC';
 }
 export const TIMEZONE = resolveConfigTimezone();
+
+export const AGENT_BRIDGE_API_KEY =
+  process.env.AGENT_BRIDGE_API_KEY || envConfig.AGENT_BRIDGE_API_KEY || '';
+export const HUB_PUSH_URL =
+  'https://ktyjtbivycjkklkrcudb.supabase.co/functions/v1/push-agent-status';
