@@ -77,6 +77,10 @@ export function startIpcWatcher(deps: IpcDeps): void {
               if (data.type === 'message' && data.chatJid && data.text) {
                 // Authorization: verify this group can send to this chatJid
                 const targetGroup = registeredGroups[data.chatJid];
+                logger.info(
+                  { chatJid: data.chatJid, sourceGroup, isMain, targetGroupFolder: targetGroup?.folder ?? 'unregistered' },
+                  'IPC send_message: routing decision',
+                );
                 if (
                   isMain ||
                   (targetGroup && targetGroup.folder === sourceGroup)

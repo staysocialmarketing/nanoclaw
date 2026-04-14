@@ -213,13 +213,24 @@ function buildVolumeMounts(
     'agent-runner-src',
   );
   if (fs.existsSync(agentRunnerSrc)) {
-    const srcIndex = path.join(agentRunnerSrc, 'index.ts');
+    // Invalidate when ANY source file is newer than the cached copy.
+    // Previously only index.ts was checked, which missed changes to
+    // other files like ipc-mcp-stdio.ts.
+    const newestSrcMtime = fs
+      .readdirSync(agentRunnerSrc)
+      .filter((f) => f.endsWith('.ts'))
+      .reduce((max, f) => {
+        const mtime = fs.statSync(path.join(agentRunnerSrc, f)).mtimeMs;
+        return mtime > max ? mtime : max;
+      }, 0);
     const cachedIndex = path.join(groupAgentRunnerDir, 'index.ts');
+    const cachedMtime = fs.existsSync(cachedIndex)
+      ? fs.statSync(cachedIndex).mtimeMs
+      : 0;
     const needsCopy =
       !fs.existsSync(groupAgentRunnerDir) ||
       !fs.existsSync(cachedIndex) ||
-      (fs.existsSync(srcIndex) &&
-        fs.statSync(srcIndex).mtimeMs > fs.statSync(cachedIndex).mtimeMs);
+      newestSrcMtime > cachedMtime;
     if (needsCopy) {
       fs.cpSync(agentRunnerSrc, groupAgentRunnerDir, { recursive: true });
     }
