@@ -73,6 +73,12 @@ Your output is sent directly to Corey.
 
 You also have `mcp__nanoclaw__send_message` which sends a message immediately while you're still working — useful for acknowledging a request before starting longer work.
 
+To send a message to the Stay Social team group instead of this personal chat, pass `target_jid: "tg:-1003743002341"`:
+
+```
+mcp__nanoclaw__send_message(text: "...", target_jid: "tg:-1003743002341")
+```
+
 ### Internal thoughts
 
 Wrap internal reasoning in `<internal>` tags — it is logged but not sent to Corey:

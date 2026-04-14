@@ -44,6 +44,12 @@ server.tool(
   "Send a message to the user or group immediately while you're still running. Use this for progress updates or to send multiple messages. You can call this multiple times.",
   {
     text: z.string().describe('The message text to send'),
+    target_jid: z
+      .string()
+      .optional()
+      .describe(
+        '(Main group only) JID of a different registered group to send the message to (e.g. "tg:-1003743002341"). Defaults to the current chat.',
+      ),
     sender: z
       .string()
       .optional()
@@ -52,9 +58,12 @@ server.tool(
       ),
   },
   async (args) => {
+    // Main group agents may target any registered group; others are locked to their own chat
+    const targetJid = isMain && args.target_jid ? args.target_jid : chatJid;
+
     const data: Record<string, string | undefined> = {
       type: 'message',
-      chatJid,
+      chatJid: targetJid,
       text: args.text,
       sender: args.sender || undefined,
       groupFolder,
