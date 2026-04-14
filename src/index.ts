@@ -63,6 +63,7 @@ import {
 } from './sender-allowlist.js';
 import { startSessionCleanup } from './session-cleanup.js';
 import { startSchedulerLoop } from './task-scheduler.js';
+import { startStatusServer, statusTracker } from './status-server.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 
@@ -99,6 +100,23 @@ function ensureOneCLIAgent(jid: string, group: RegisteredGroup): void {
   );
 }
 
+/**
+ * Read the persona name from a group's CLAUDE.md first heading.
+ * Falls back to ASSISTANT_NAME if the file is missing or has no heading.
+ * "# Lev — Stay Social Team" → "Lev"
+ */
+function getPersonaName(groupFolder: string): string {
+  const claudeMd = path.join(GROUPS_DIR, groupFolder, 'CLAUDE.md');
+  try {
+    const content = fs.readFileSync(claudeMd, 'utf-8');
+    const match = content.match(/^#\s+(.+)$/m);
+    if (match) return match[1].split(/[—–-]/)[0].trim();
+  } catch {
+    // ignore
+  }
+  return ASSISTANT_NAME;
+}
+
 function loadState(): void {
   lastTimestamp = getRouterState('last_timestamp') || '';
   const agentTs = getRouterState('last_agent_timestamp');
@@ -110,6 +128,9 @@ function loadState(): void {
   }
   sessions = getAllSessions();
   registeredGroups = getAllRegisteredGroups();
+  for (const group of Object.values(registeredGroups)) {
+    statusTracker.register(group.folder, getPersonaName(group.folder));
+  }
   logger.info(
     { groupCount: Object.keys(registeredGroups).length },
     'State loaded',
@@ -182,6 +203,8 @@ function registerGroup(jid: string, group: RegisteredGroup): void {
 
   // Ensure a corresponding OneCLI agent exists (best-effort, non-blocking)
   ensureOneCLIAgent(jid, group);
+
+  statusTracker.register(group.folder, getPersonaName(group.folder));
 
   logger.info(
     { jid, name: group.name, folder: group.folder },
@@ -260,6 +283,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     missedMessages[missedMessages.length - 1].timestamp;
   saveState();
 
+  // Update status: mark as processing with a brief task summary
+  const lastMsg = missedMessages[missedMessages.length - 1];
+  const taskSummary = lastMsg.content.slice(0, 80).replace(/\n/g, ' ').trim();
+  statusTracker.setProcessing(group.folder, getPersonaName(group.folder), taskSummary);
+
   logger.info(
     { group: group.name, messageCount: missedMessages.length },
     'Processing messages',
@@ -303,6 +331,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
     if (result.status === 'success') {
       queue.notifyIdle(chatJid);
+      statusTracker.setIdle(group.folder);
     }
 
     if (result.status === 'error') {
@@ -312,6 +341,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   await channel.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
+  statusTracker.setSleeping(group.folder);
 
   if (output === 'error' || hadError) {
     // If we already sent output to the user, don't roll back the cursor —
@@ -747,6 +777,7 @@ async function main(): Promise<void> {
       }
     },
   });
+  startStatusServer();
   startSessionCleanup();
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
