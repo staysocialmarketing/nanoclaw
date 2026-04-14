@@ -286,7 +286,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // Update status: mark as processing with a brief task summary
   const lastMsg = missedMessages[missedMessages.length - 1];
   const taskSummary = lastMsg.content.slice(0, 80).replace(/\n/g, ' ').trim();
-  statusTracker.setProcessing(group.folder, getPersonaName(group.folder), taskSummary);
+  statusTracker.setProcessing(
+    group.folder,
+    getPersonaName(group.folder),
+    taskSummary,
+  );
 
   logger.info(
     { group: group.name, messageCount: missedMessages.length },
@@ -331,7 +335,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
     if (result.status === 'success') {
       queue.notifyIdle(chatJid);
-      statusTracker.setIdle(group.folder);
+      // Only mark idle when the agent has actually sent content — not on
+      // internal session-update markers (result: null), which fire mid-task.
+      if (result.result !== null) {
+        statusTracker.setIdle(group.folder);
+      }
     }
 
     if (result.status === 'error') {
@@ -552,6 +560,17 @@ async function startMessageLoop(): Promise<void> {
             lastAgentTimestamp[chatJid] =
               messagesToSend[messagesToSend.length - 1].timestamp;
             saveState();
+            // Mark as processing — the container is actively handling a new request
+            const pipedLastMsg = messagesToSend[messagesToSend.length - 1];
+            const pipedTask = pipedLastMsg.content
+              .slice(0, 80)
+              .replace(/\n/g, ' ')
+              .trim();
+            statusTracker.setProcessing(
+              group.folder,
+              getPersonaName(group.folder),
+              pipedTask,
+            );
             // Show typing indicator while the container processes the piped message
             channel
               .setTyping?.(chatJid, true)
