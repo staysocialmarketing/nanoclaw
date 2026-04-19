@@ -6,8 +6,7 @@
  *   2. Push loop — POSTs agent status to the HUB edge function every 5 seconds.
  *
  * Agents with multiple contexts (e.g. Lev on personal + team Telegram) are merged
- * into a single entry. Scout and Quill are virtual sub-agents whose status is
- * derived from what Lev is currently doing.
+ * into a single entry.
  */
 import http from 'http';
 
@@ -69,52 +68,8 @@ interface HubAgent {
 
 // Static agent roster pushed to the HUB
 const AGENT_ROLES: Record<string, { name: string; role: string }> = {
-  lev: { name: 'Lev', role: 'Operations Manager' },
-  scout: { name: 'Scout', role: 'Research Agent' },
-  quill: { name: 'Quill', role: 'Copywriting Agent' },
+  lev: { name: 'Lev', role: 'Chief of Staff' },
 };
-
-// ─── Keyword patterns for sub-agent derivation ────────────────────────────────
-
-const RESEARCH_RE =
-  /research|find|search|look up|investigate|analy[sz]e|check/i;
-const WRITING_RE = /write|draft|caption|content|post|email|copy/i;
-const MEETING_RE = /meet|brief|sync|strategy|board|session|call/i;
-
-function deriveSubAgents(
-  levStatus: HubStatus,
-  levTask: string | null,
-): { scout: HubAgent; quill: HubAgent } {
-  const scout: HubAgent = {
-    ...AGENT_ROLES.scout,
-    id: 'scout',
-    status: 'idle',
-    task: null,
-  };
-  const quill: HubAgent = {
-    ...AGENT_ROLES.quill,
-    id: 'quill',
-    status: 'idle',
-    task: null,
-  };
-
-  if (levStatus === 'processing' && levTask) {
-    if (RESEARCH_RE.test(levTask)) {
-      scout.status = 'processing';
-      scout.task = `Researching: ${levTask}`;
-    } else if (WRITING_RE.test(levTask)) {
-      quill.status = 'processing';
-      quill.task = `Drafting: ${levTask}`;
-    } else if (MEETING_RE.test(levTask)) {
-      scout.status = 'active';
-      scout.task = 'In session with Lev';
-      quill.status = 'active';
-      quill.task = 'In session with Lev';
-    }
-  }
-
-  return { scout, quill };
-}
 
 // ─── Status tracker ───────────────────────────────────────────────────────────
 
@@ -132,9 +87,9 @@ function mapToHubStatus(status: AgentStatusValue): HubStatus {
     case 'processing':
       return 'processing';
     case 'idle':
-      return 'idle';
+      return 'active';
     case 'sleeping':
-      return 'offline';
+      return 'active';
   }
 }
 
@@ -214,24 +169,27 @@ class StatusTracker {
         currentTask: s.currentTask,
         lastActive: s.lastActive,
       }));
-      agents.push({ id: agentId, name: states[0].agentName, status: topStatus, currentTask, lastActive, channels });
+      agents.push({
+        id: agentId,
+        name: states[0].agentName,
+        status: topStatus,
+        currentTask,
+        lastActive,
+        channels,
+      });
     }
     return { agents, timestamp: new Date().toISOString() };
   }
 
-  /** HUB push payload — Lev + derived Scout/Quill. */
   hubPayload(): { agents: HubAgent[] } {
     const { agents } = this.snapshot();
     const lev = agents.find((a) => a.id === 'lev');
     const levHubStatus = lev ? mapToHubStatus(lev.status) : 'offline';
     const levTask = lev?.currentTask ?? null;
-    const { scout, quill } = deriveSubAgents(levHubStatus, levTask);
 
     return {
       agents: [
         { id: 'lev', ...AGENT_ROLES.lev, status: levHubStatus, task: levTask },
-        scout,
-        quill,
       ],
     };
   }
@@ -270,7 +228,10 @@ function startHubPush(): void {
   };
 
   setInterval(push, HUB_PUSH_INTERVAL_MS);
-  logger.info({ url: HUB_PUSH_URL, intervalMs: HUB_PUSH_INTERVAL_MS }, 'HUB status push started');
+  logger.info(
+    { url: HUB_PUSH_URL, intervalMs: HUB_PUSH_INTERVAL_MS },
+    'HUB status push started',
+  );
 }
 
 // ─── Local HTTP server ────────────────────────────────────────────────────────
@@ -300,6 +261,7 @@ export function startStatusServer(): void {
 
   server.listen(STATUS_PORT, '127.0.0.1', () => {
     logger.info({ port: STATUS_PORT }, 'Status server listening');
+    startHubPush();
   });
 
   server.on('error', (err: NodeJS.ErrnoException) => {
@@ -312,6 +274,4 @@ export function startStatusServer(): void {
       logger.warn({ err }, 'Status server error');
     }
   });
-
-  startHubPush();
 }
