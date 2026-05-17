@@ -39,6 +39,7 @@ export interface RegisteredGroup {
   added_at: string;
   containerConfig?: ContainerConfig;
   requiresTrigger?: boolean; // Default: true for groups, false for solo chats
+  requiresMention?: boolean; // If true, only activate when the bot is @mentioned (Telegram)
   isMain?: boolean; // True for the main control group (no trigger, elevated privileges)
 }
 
@@ -52,6 +53,7 @@ export interface NewMessage {
   is_from_me?: boolean;
   is_bot_message?: boolean;
   thread_id?: string;
+  mentioned?: boolean; // True if the bot was explicitly @mentioned in this message
   reply_to_message_id?: string;
   reply_to_message_content?: string;
   reply_to_sender_name?: string;

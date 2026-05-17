@@ -180,10 +180,11 @@ export class TelegramChannel implements Channel {
       // When the bot is @mentioned (e.g. @DerekStaySocialBot), Telegram delivers it
       // as a mention entity. We prepend the group's configured trigger word so the
       // message loop recognises it. Falls back to @ASSISTANT_NAME for unregistered chats.
+      let isBotMentioned = false;
       const botUsername = ctx.me?.username?.toLowerCase();
       if (botUsername) {
         const entities = ctx.message.entities || [];
-        const isBotMentioned = entities.some((entity) => {
+        isBotMentioned = entities.some((entity) => {
           if (entity.type === 'mention') {
             const mentionText = content
               .substring(entity.offset, entity.offset + entity.length)
@@ -232,6 +233,7 @@ export class TelegramChannel implements Channel {
         content,
         timestamp,
         is_from_me: false,
+        mentioned: isBotMentioned || undefined,
         thread_id: threadId ? threadId.toString() : undefined,
         reply_to_message_id: replyToMessageId,
         reply_to_message_content: replyToContent,
