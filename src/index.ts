@@ -262,16 +262,22 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   if (missedMessages.length === 0) return true;
 
-  // For non-main groups, check if trigger is required and present
-  if (!isMainGroup && group.requiresTrigger !== false) {
-    const triggerPattern = getTriggerPattern(group.trigger);
-    const allowlistCfg = loadSenderAllowlist();
-    const hasTrigger = missedMessages.some(
-      (m) =>
-        triggerPattern.test(m.content.trim()) &&
-        (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
-    );
-    if (!hasTrigger) return true;
+  // For non-main groups, check if a trigger or mention is required and present
+  if (!isMainGroup) {
+    if (group.requiresMention) {
+      // Only activate when the bot was explicitly @mentioned
+      const hasMention = missedMessages.some((m) => m.mentioned);
+      if (!hasMention) return true;
+    } else if (group.requiresTrigger !== false) {
+      const triggerPattern = getTriggerPattern(group.trigger);
+      const allowlistCfg = loadSenderAllowlist();
+      const hasTrigger = missedMessages.some(
+        (m) =>
+          triggerPattern.test(m.content.trim()) &&
+          (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
+      );
+      if (!hasTrigger) return true;
+    }
   }
 
   const prompt = formatMessages(missedMessages, TIMEZONE);
@@ -523,21 +529,26 @@ async function startMessageLoop(): Promise<void> {
           }
 
           const isMainGroup = group.isMain === true;
-          const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
 
-          // For non-main groups, only act on trigger messages.
+          // For non-main groups, only act on trigger or mention messages.
           // Non-trigger messages accumulate in DB and get pulled as
           // context when a trigger eventually arrives.
-          if (needsTrigger) {
-            const triggerPattern = getTriggerPattern(group.trigger);
-            const allowlistCfg = loadSenderAllowlist();
-            const hasTrigger = groupMessages.some(
-              (m) =>
-                triggerPattern.test(m.content.trim()) &&
-                (m.is_from_me ||
-                  isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
-            );
-            if (!hasTrigger) continue;
+          if (!isMainGroup) {
+            if (group.requiresMention) {
+              // Only activate when the bot was explicitly @mentioned
+              const hasMention = groupMessages.some((m) => m.mentioned);
+              if (!hasMention) continue;
+            } else if (group.requiresTrigger !== false) {
+              const triggerPattern = getTriggerPattern(group.trigger);
+              const allowlistCfg = loadSenderAllowlist();
+              const hasTrigger = groupMessages.some(
+                (m) =>
+                  triggerPattern.test(m.content.trim()) &&
+                  (m.is_from_me ||
+                    isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
+              );
+              if (!hasTrigger) continue;
+            }
           }
 
           // Pull all messages since lastAgentTimestamp so non-trigger
