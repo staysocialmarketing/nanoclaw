@@ -30,6 +30,9 @@ import { RegisteredGroup } from './types.js';
 
 const onecli = new OneCLI({ url: ONECLI_URL });
 
+// Groups that run Lev — use Opus for strategy work, all others use Sonnet
+const LEV_GROUPS = new Set(['lev', 'telegram_main', 'telegram_team']);
+
 // Sentinel markers for robust output parsing (must match agent-runner)
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
@@ -160,7 +163,9 @@ function buildVolumeMounts(
             // Enable Claude's memory feature (persists user preferences between sessions)
             // https://code.claude.com/docs/en/memory#manage-auto-memory
             CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
-            ANTHROPIC_MODEL: 'claude-sonnet-4-6',
+            ANTHROPIC_MODEL: LEV_GROUPS.has(group.folder)
+              ? 'claude-opus-4-6'
+              : 'claude-sonnet-4-6',
           },
         },
         null,

@@ -117,6 +117,9 @@ async function readStdin(): Promise<string> {
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 
+// Groups that run Lev — use Opus for strategy work, all others use Sonnet
+const LEV_GROUPS = new Set(['lev', 'telegram_main', 'telegram_team']);
+
 function writeOutput(output: ContainerOutput): void {
   console.log(OUTPUT_START_MARKER);
   console.log(JSON.stringify(output));
@@ -449,7 +452,7 @@ async function runQuery(
             append: globalClaudeMd,
           }
         : undefined,
-      model: 'sonnet[1m]',
+      model: LEV_GROUPS.has(containerInput.groupFolder) ? 'opus[1m]' : 'sonnet[1m]',
       allowedTools: [
         'Bash',
         'Read',
