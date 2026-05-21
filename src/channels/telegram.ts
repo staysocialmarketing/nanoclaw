@@ -4,7 +4,11 @@ import path from 'path';
 
 import { Api, Bot } from 'grammy';
 
-import { ASSISTANT_NAME, getTriggerPattern, TRIGGER_PATTERN } from '../config.js';
+import {
+  ASSISTANT_NAME,
+  getTriggerPattern,
+  TRIGGER_PATTERN,
+} from '../config.js';
 import { readEnvFile } from '../env.js';
 import { resolveGroupFolderPath } from '../group-folder.js';
 import { logger } from '../logger.js';
@@ -46,15 +50,22 @@ async function sendTelegramMessage(
 }
 
 export class TelegramChannel implements Channel {
-  name = 'telegram';
+  name: string;
 
   private bot: Bot | null = null;
   private opts: TelegramChannelOpts;
   private botToken: string;
+  private jidPrefix: string;
 
-  constructor(botToken: string, opts: TelegramChannelOpts) {
+  constructor(
+    botToken: string,
+    opts: TelegramChannelOpts,
+    options: { name?: string; jidPrefix?: string } = {},
+  ) {
     this.botToken = botToken;
     this.opts = opts;
+    this.name = options.name ?? 'telegram';
+    this.jidPrefix = options.jidPrefix ?? 'tg';
   }
 
   /**
@@ -125,7 +136,7 @@ export class TelegramChannel implements Channel {
           : (ctx.chat as any).title || 'Unknown';
 
       ctx.reply(
-        `Chat ID: \`tg:${chatId}\`\nName: ${chatName}\nType: ${chatType}`,
+        `Chat ID: \`${this.jidPrefix}:${chatId}\`\nName: ${chatName}\nType: ${chatType}`,
         { parse_mode: 'Markdown' },
       );
     });
@@ -145,7 +156,7 @@ export class TelegramChannel implements Channel {
         if (TELEGRAM_BOT_COMMANDS.has(cmd)) return;
       }
 
-      const chatJid = `tg:${ctx.chat.id}`;
+      const chatJid = `${this.jidPrefix}:${ctx.chat.id}`;
       let content = ctx.message.text;
       const timestamp = new Date(ctx.message.date * 1000).toISOString();
       const senderName =
@@ -210,7 +221,7 @@ export class TelegramChannel implements Channel {
         chatJid,
         timestamp,
         chatName,
-        'telegram',
+        this.name,
         isGroup,
       );
 
@@ -250,7 +261,7 @@ export class TelegramChannel implements Channel {
       placeholder: string,
       opts?: { fileId?: string; filename?: string },
     ) => {
-      const chatJid = `tg:${ctx.chat.id}`;
+      const chatJid = `${this.jidPrefix}:${ctx.chat.id}`;
       const group = this.opts.registeredGroups()[chatJid];
       if (!group) return;
 
@@ -268,7 +279,7 @@ export class TelegramChannel implements Channel {
         chatJid,
         timestamp,
         undefined,
-        'telegram',
+        this.name,
         isGroup,
       );
 
@@ -382,7 +393,7 @@ export class TelegramChannel implements Channel {
     }
 
     try {
-      const numericId = jid.replace(/^tg:/, '');
+      const numericId = jid.slice(this.jidPrefix.length + 1);
       const options = threadId
         ? { message_thread_id: parseInt(threadId, 10) }
         : {};
@@ -415,7 +426,7 @@ export class TelegramChannel implements Channel {
   }
 
   ownsJid(jid: string): boolean {
-    return jid.startsWith('tg:');
+    return jid.startsWith(`${this.jidPrefix}:`);
   }
 
   async disconnect(): Promise<void> {
@@ -429,7 +440,7 @@ export class TelegramChannel implements Channel {
   async setTyping(jid: string, isTyping: boolean): Promise<void> {
     if (!this.bot || !isTyping) return;
     try {
-      const numericId = jid.replace(/^tg:/, '');
+      const numericId = jid.slice(this.jidPrefix.length + 1);
       await this.bot.api.sendChatAction(numericId, 'typing');
     } catch (err) {
       logger.debug({ jid, err }, 'Failed to send Telegram typing indicator');
@@ -445,5 +456,44 @@ registerChannel('telegram', (opts: ChannelOpts) => {
     logger.warn('Telegram: TELEGRAM_BOT_TOKEN not set');
     return null;
   }
-  return new TelegramChannel(token, opts);
+  return new TelegramChannel(token, opts, { name: 'telegram', jidPrefix: 'tg' });
+});
+
+registerChannel('telegram-forge', (opts: ChannelOpts) => {
+  const envVars = readEnvFile(['FORGE_BOT_TOKEN']);
+  const token = process.env.FORGE_BOT_TOKEN || envVars.FORGE_BOT_TOKEN || '';
+  if (!token) {
+    logger.warn('Telegram Forge: FORGE_BOT_TOKEN not set');
+    return null;
+  }
+  return new TelegramChannel(token, opts, {
+    name: 'telegram-forge',
+    jidPrefix: 'tg-forge',
+  });
+});
+
+registerChannel('telegram-quill', (opts: ChannelOpts) => {
+  const envVars = readEnvFile(['QUILL_BOT_TOKEN']);
+  const token = process.env.QUILL_BOT_TOKEN || envVars.QUILL_BOT_TOKEN || '';
+  if (!token) {
+    logger.warn('Telegram Quill: QUILL_BOT_TOKEN not set');
+    return null;
+  }
+  return new TelegramChannel(token, opts, {
+    name: 'telegram-quill',
+    jidPrefix: 'tg-quill',
+  });
+});
+
+registerChannel('telegram-vincent', (opts: ChannelOpts) => {
+  const envVars = readEnvFile(['VINCENT_BOT_TOKEN']);
+  const token = process.env.VINCENT_BOT_TOKEN || envVars.VINCENT_BOT_TOKEN || '';
+  if (!token) {
+    logger.warn('Telegram Vincent: VINCENT_BOT_TOKEN not set');
+    return null;
+  }
+  return new TelegramChannel(token, opts, {
+    name: 'telegram-vincent',
+    jidPrefix: 'tg-vincent',
+  });
 });
