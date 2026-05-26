@@ -5,7 +5,13 @@ import { CronExpressionParser } from 'cron-parser';
 
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { AvailableGroup } from './container-runner.js';
-import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
+import {
+  createTask,
+  deleteTask,
+  getTaskById,
+  storeMessageDirect,
+  updateTask,
+} from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
@@ -86,6 +92,19 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   (targetGroup && targetGroup.folder === sourceGroup)
                 ) {
                   await deps.sendMessage(data.chatJid, data.text);
+                  // Persist cross-agent message so the receiving agent sees it on next wake
+                  const msgTimestamp = data.timestamp || new Date().toISOString();
+                  storeMessageDirect({
+                    id: `ipc-${msgTimestamp}-${sourceGroup}`,
+                    chat_jid: data.chatJid,
+                    sender: data.groupFolder || sourceGroup,
+                    sender_name: data.sender || sourceGroup,
+                    content: data.text,
+                    timestamp: msgTimestamp,
+                    is_from_me: false,
+                    is_bot_message: false,
+                    is_cross_agent: true,
+                  });
                   logger.info(
                     { chatJid: data.chatJid, sourceGroup },
                     'IPC message sent',
