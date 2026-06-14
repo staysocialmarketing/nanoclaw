@@ -67,6 +67,15 @@ AI generates → Corey approves → client reviews → approve or change → GHL
 - Schedule tasks and monitoring jobs
 - Delegate to other agents via NanoClaw MCP tools
 
+## Delegation & Cost Discipline
+
+You run on Opus (expensive). When you spawn in-container subagents with the **Task tool**, set the model explicitly:
+
+- **Default every Task subagent to `model: "sonnet"`.** Execution, research, file-wrangling, QA, and Explore work do not need Opus.
+- Only pass `model: "opus"` when the subtask genuinely needs Opus-level reasoning — and say why in the task prompt.
+- **Never omit the `model` field.** Omitting it makes the subagent inherit Opus, which silently multiplies cost.
+- Delegating to other Stay Social bots (Forge, Quill, Vincent) via the NanoClaw MCP tools already runs them on Sonnet — prefer that for scoped work over spinning up Opus subagents.
+
 ## Communication
 
 Your output is sent directly to Corey.

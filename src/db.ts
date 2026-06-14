@@ -65,6 +65,23 @@ function createSchema(database: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_task_run_logs ON task_run_logs(task_id, run_at);
 
+    CREATE TABLE IF NOT EXISTS agent_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_at TEXT NOT NULL,
+      group_folder TEXT NOT NULL,
+      task_id TEXT,
+      source TEXT NOT NULL,
+      model TEXT,
+      cost_usd REAL,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      cache_read_tokens INTEGER,
+      cache_creation_tokens INTEGER,
+      duration_ms INTEGER,
+      model_usage_json TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_usage ON agent_usage(run_at, group_folder);
+
     CREATE TABLE IF NOT EXISTS router_state (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -149,15 +166,11 @@ function createSchema(database: Database.Database): void {
 
   // Add reply context columns if they don't exist (migration for existing DBs)
   try {
-    database.exec(
-      `ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT`,
-    );
+    database.exec(`ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT`);
     database.exec(
       `ALTER TABLE messages ADD COLUMN reply_to_message_content TEXT`,
     );
-    database.exec(
-      `ALTER TABLE messages ADD COLUMN reply_to_sender_name TEXT`,
-    );
+    database.exec(`ALTER TABLE messages ADD COLUMN reply_to_sender_name TEXT`);
   } catch {
     /* columns already exist */
   }
@@ -548,6 +561,46 @@ export function updateTaskAfterRun(
     WHERE id = ?
   `,
   ).run(nextRun, now, lastResult, nextRun, id);
+}
+
+export interface AgentUsageLog {
+  run_at: string;
+  group_folder: string;
+  task_id?: string | null;
+  source: string;
+  model?: string | null;
+  cost_usd?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cache_read_tokens?: number | null;
+  cache_creation_tokens?: number | null;
+  duration_ms?: number | null;
+  model_usage_json?: string | null;
+}
+
+export function logAgentUsage(log: AgentUsageLog): void {
+  db.prepare(
+    `
+    INSERT INTO agent_usage
+      (run_at, group_folder, task_id, source, model, cost_usd,
+       input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+       duration_ms, model_usage_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    log.run_at,
+    log.group_folder,
+    log.task_id ?? null,
+    log.source,
+    log.model ?? null,
+    log.cost_usd ?? null,
+    log.input_tokens ?? null,
+    log.output_tokens ?? null,
+    log.cache_read_tokens ?? null,
+    log.cache_creation_tokens ?? null,
+    log.duration_ms ?? null,
+    log.model_usage_json ?? null,
+  );
 }
 
 export function logTaskRun(log: TaskRunLog): void {
