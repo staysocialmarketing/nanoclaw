@@ -35,11 +35,21 @@ interface ContainerInput {
   script?: string;
 }
 
+interface AgentUsage {
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  modelUsage?: Record<string, unknown>;
+}
+
 interface ContainerOutput {
   status: 'success' | 'error';
   result: string | null;
   newSessionId?: string;
   error?: string;
+  usage?: AgentUsage;
 }
 
 interface SessionEntry {
@@ -118,7 +128,7 @@ const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 
 // Groups that run Lev — use Opus for strategy work, all others use Sonnet
-const LEV_GROUPS = new Set(['lev', 'telegram_main', 'telegram_team']);
+const LEV_GROUPS = new Set(['lev', 'telegram_main']);
 
 function writeOutput(output: ContainerOutput): void {
   console.log(OUTPUT_START_MARKER);
@@ -414,6 +424,9 @@ async function runQuery(
   let lastAssistantUuid: string | undefined;
   let messageCount = 0;
   let resultCount = 0;
+  // Cumulative usage/cost from the SDK 'result' message. total_cost_usd and
+  // usage are session-cumulative, so the latest result carries the full total.
+  let lastUsage: AgentUsage | undefined;
 
   // Load global CLAUDE.md as additional system context (shared across all groups)
   const globalClaudeMdPath = '/workspace/global/CLAUDE.md';
@@ -530,13 +543,34 @@ async function runQuery(
       resultCount++;
       const textResult =
         'result' in message ? (message as { result?: string }).result : null;
+      const r = message as {
+        total_cost_usd?: number;
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_read_input_tokens?: number;
+          cache_creation_input_tokens?: number;
+        };
+        modelUsage?: Record<string, unknown>;
+      };
+      if (typeof r.total_cost_usd === 'number') {
+        lastUsage = {
+          costUsd: r.total_cost_usd,
+          inputTokens: r.usage?.input_tokens ?? 0,
+          outputTokens: r.usage?.output_tokens ?? 0,
+          cacheReadTokens: r.usage?.cache_read_input_tokens ?? 0,
+          cacheCreationTokens: r.usage?.cache_creation_input_tokens ?? 0,
+          modelUsage: r.modelUsage,
+        };
+      }
       log(
-        `Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`,
+        `Result #${resultCount}: subtype=${message.subtype} cost=${lastUsage?.costUsd ?? 'n/a'}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`,
       );
       writeOutput({
         status: 'success',
         result: textResult || null,
         newSessionId,
+        usage: lastUsage,
       });
     }
   }

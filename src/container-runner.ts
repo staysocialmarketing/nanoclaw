@@ -18,6 +18,7 @@ import {
 } from './config.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
+import { logAgentUsage } from './db.js';
 import {
   CONTAINER_RUNTIME_BIN,
   hostGatewayArgs,
@@ -30,8 +31,9 @@ import { RegisteredGroup } from './types.js';
 
 const onecli = new OneCLI({ url: ONECLI_URL });
 
-// Groups that run Lev — use Opus for strategy work, all others use Sonnet
-const LEV_GROUPS = new Set(['lev', 'telegram_main', 'telegram_team']);
+// Groups that run Lev — use Opus for strategy work, all others use Sonnet.
+// telegram_team runs on Sonnet: team coordination doesn't need Opus.
+const LEV_GROUPS = new Set(['lev', 'telegram_main']);
 
 // Sentinel markers for robust output parsing (must match agent-runner)
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
@@ -46,6 +48,16 @@ export interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   script?: string;
+  taskId?: string;
+}
+
+export interface AgentUsage {
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  modelUsage?: Record<string, unknown>;
 }
 
 export interface ContainerOutput {
@@ -53,6 +65,7 @@ export interface ContainerOutput {
   result: string | null;
   newSessionId?: string;
   error?: string;
+  usage?: AgentUsage;
 }
 
 interface VolumeMount {
@@ -148,30 +161,23 @@ function buildVolumeMounts(
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
-  if (!fs.existsSync(settingsFile)) {
-    fs.writeFileSync(
-      settingsFile,
-      JSON.stringify(
-        {
-          env: {
-            // Enable agent swarms (subagent orchestration)
-            // https://code.claude.com/docs/en/agent-teams#orchestrate-teams-of-claude-code-sessions
-            CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
-            // Load CLAUDE.md from additional mounted directories
-            // https://code.claude.com/docs/en/memory#load-memory-from-additional-directories
-            CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
-            // Enable Claude's memory feature (persists user preferences between sessions)
-            // https://code.claude.com/docs/en/memory#manage-auto-memory
-            CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
-            ANTHROPIC_MODEL: LEV_GROUPS.has(group.folder)
-              ? 'claude-opus-4-6'
-              : 'claude-sonnet-4-6',
-          },
-        },
-        null,
-        2,
-      ) + '\n',
-    );
+  const settingsContent = {
+    env: {
+      CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
+      CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
+      ENABLE_PROMPT_CACHING_1H: '1',
+      ANTHROPIC_MODEL: LEV_GROUPS.has(group.folder)
+        ? 'claude-opus-4-7'
+        : 'claude-sonnet-4-6',
+    },
+  };
+  const desiredSettings = JSON.stringify(settingsContent, null, 2) + '\n';
+  const currentSettings = fs.existsSync(settingsFile)
+    ? fs.readFileSync(settingsFile, 'utf-8')
+    : '';
+  if (currentSettings !== desiredSettings) {
+    fs.writeFileSync(settingsFile, desiredSettings);
   }
 
   // Sync skills from container/skills/ into each group's .claude/skills/
@@ -379,6 +385,7 @@ export async function runContainerAgent(
     // Streaming output: parse OUTPUT_START/END marker pairs as they arrive
     let parseBuffer = '';
     let newSessionId: string | undefined;
+    let lastUsage: AgentUsage | undefined;
     let outputChain = Promise.resolve();
 
     container.stdout.on('data', (data) => {
@@ -416,6 +423,9 @@ export async function runContainerAgent(
             const parsed: ContainerOutput = JSON.parse(jsonStr);
             if (parsed.newSessionId) {
               newSessionId = parsed.newSessionId;
+            }
+            if (parsed.usage) {
+              lastUsage = parsed.usage;
             }
             hadStreamingOutput = true;
             // Activity detected — reset the hard timeout
@@ -490,6 +500,31 @@ export async function runContainerAgent(
     container.on('close', (code) => {
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
+
+      // Record token/cost usage for this run (one row per container run),
+      // so spend can be attributed per group/task and cache hits verified.
+      if (lastUsage) {
+        try {
+          logAgentUsage({
+            run_at: new Date().toISOString(),
+            group_folder: group.folder,
+            task_id: input.taskId ?? null,
+            source: input.isScheduledTask ? 'scheduled' : 'message',
+            model: LEV_GROUPS.has(group.folder) ? 'opus' : 'sonnet',
+            cost_usd: lastUsage.costUsd,
+            input_tokens: lastUsage.inputTokens,
+            output_tokens: lastUsage.outputTokens,
+            cache_read_tokens: lastUsage.cacheReadTokens,
+            cache_creation_tokens: lastUsage.cacheCreationTokens,
+            duration_ms: duration,
+            model_usage_json: lastUsage.modelUsage
+              ? JSON.stringify(lastUsage.modelUsage)
+              : null,
+          });
+        } catch (err) {
+          logger.warn({ group: group.name, err }, 'Failed to log agent usage');
+        }
+      }
 
       if (timedOut) {
         const ts = new Date().toISOString().replace(/[:.]/g, '-');
