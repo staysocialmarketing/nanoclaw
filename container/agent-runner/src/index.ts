@@ -24,6 +24,19 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
 
+type GroupMcpServerConfig =
+  | {
+      type?: 'stdio';
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    }
+  | {
+      type: 'http' | 'sse';
+      url: string;
+      headers?: Record<string, string>;
+    };
+
 interface ContainerInput {
   prompt: string;
   sessionId?: string;
@@ -33,6 +46,7 @@ interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   script?: string;
+  mcpServers?: Record<string, GroupMcpServerConfig>;
 }
 
 interface AgentUsage {
@@ -486,12 +500,18 @@ async function runQuery(
         'Skill',
         'NotebookEdit',
         'mcp__nanoclaw__*',
+        // Group-configured MCP servers (e.g. higgsfield) get their tools allowed
+        ...Object.keys(containerInput.mcpServers ?? {}).map(
+          (name) => `mcp__${name}__*`,
+        ),
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       settingSources: ['project', 'user'],
       mcpServers: {
+        // Group-configured servers first: `nanoclaw` always wins on name collision
+        ...(containerInput.mcpServers ?? {}),
         nanoclaw: {
           command: 'node',
           args: [mcpServerPath],

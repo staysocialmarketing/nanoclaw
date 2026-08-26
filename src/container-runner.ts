@@ -27,7 +27,8 @@ import {
 } from './container-runtime.js';
 import { OneCLI } from '@onecli-sh/sdk';
 import { validateAdditionalMounts } from './mount-security.js';
-import { RegisteredGroup } from './types.js';
+import { resolveGroupMcpServers } from './mcp-config.js';
+import { GroupMcpServerConfig, RegisteredGroup } from './types.js';
 
 const onecli = new OneCLI({ url: ONECLI_URL });
 
@@ -49,6 +50,7 @@ export interface ContainerInput {
   assistantName?: string;
   script?: string;
   taskId?: string;
+  mcpServers?: Record<string, GroupMcpServerConfig>;
 }
 
 export interface AgentUsage {
@@ -379,7 +381,24 @@ export async function runContainerAgent(
     let stdoutTruncated = false;
     let stderrTruncated = false;
 
-    container.stdin.write(JSON.stringify(input));
+    // Per-group MCP servers: resolve ${VAR} placeholders from host env
+    // at spawn time so the stored config never contains secrets.
+    // Resolved values go only to the container's stdin — never into
+    // `input`, which gets serialized into on-disk run logs.
+    const mcpServers = resolveGroupMcpServers(
+      group.containerConfig?.mcpServers,
+      group.name,
+    );
+    if (mcpServers) {
+      logger.info(
+        { group: group.name, servers: Object.keys(mcpServers) },
+        'Group MCP servers attached',
+      );
+    }
+
+    container.stdin.write(
+      JSON.stringify(mcpServers ? { ...input, mcpServers } : input),
+    );
     container.stdin.end();
 
     // Streaming output: parse OUTPUT_START/END marker pairs as they arrive

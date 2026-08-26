@@ -27,9 +27,30 @@ export interface AllowedRoot {
   description?: string;
 }
 
+/**
+ * MCP server definition for a group's agent container.
+ * Mirrors the Agent SDK's McpServerConfig shapes (stdio, http, sse).
+ * String values in `env` and `headers` may reference host environment
+ * variables as ${VAR_NAME}; they are resolved by the host at container
+ * spawn time so secrets never live in this config (stored in the DB).
+ */
+export type GroupMcpServerConfig =
+  | {
+      type?: 'stdio';
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    }
+  | {
+      type: 'http' | 'sse';
+      url: string;
+      headers?: Record<string, string>;
+    };
+
 export interface ContainerConfig {
   additionalMounts?: AdditionalMount[];
   timeout?: number; // Default: 300000 (5 minutes)
+  mcpServers?: Record<string, GroupMcpServerConfig>;
 }
 
 export interface RegisteredGroup {
